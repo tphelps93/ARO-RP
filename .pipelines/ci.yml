@@ -31,6 +31,22 @@ variables:
 - template: vars.yml
 
 jobs:
+- job: Golang_CodeQL
+  pool:
+    name: 1es-aro-ci-pool
+  variables:
+    HOME: $(Agent.BuildDirectory)
+  steps:
+    - template: ./templates/template-checkout.yml
+    - template: ./templates/template-codeql-setup.yml
+      parameters:
+        language: go
+    - script: |
+        set -xe
+        ./codeql/codeql database analyze ./codeql-db --format=sarif-latest --sarif-category=go --output=codeql-results-go.sarif
+        ./codeql/codeql github upload-results --sarif=codeql-results-go.sarif
+      target: golang
+
 - job: Python_Unit_Tests
   pool:
     name: 1es-aro-ci-pool
