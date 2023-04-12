@@ -374,7 +374,7 @@ type closure struct {
 
 // usingListPermissions is how the current check is done
 func (c closure) usingListPermissions() (bool, error) {
-	c.dv.log.Debug("retry validateActions with ListPermissions")
+	c.dv.log.Info("retry validateActions with ListPermissions")
 	perms, err := c.dv.permissions.ListForResource(
 		c.ctx,
 		c.resource.ResourceGroup,
@@ -410,11 +410,14 @@ func (c closure) usingCheckAccessV2() (bool, error) {
 		scope := c.dv.azEnv.ResourceManagerEndpoint + "/.default"
 		t, err := c.dv.checkAccessSubjectInfoCred.GetToken(c.ctx, policy.TokenRequestOptions{Scopes: []string{scope}})
 		if err != nil {
+			c.dv.log.Info(fmt.Sprintf("Error retrieving token: %s", err.Error()))
 			return false, err
 		}
+		c.dv.log.Info(fmt.Sprintf("Received token: %s", t.Token))
 
 		oid, err := token.GetObjectId(t.Token)
 		if err != nil {
+			c.dv.log.Info(fmt.Sprintf("Error retrieving oid: %s", err.Error()))
 			return false, err
 		}
 		c.oid = &oid
@@ -423,6 +426,7 @@ func (c closure) usingCheckAccessV2() (bool, error) {
 	authReq := createAuthorizationRequest(*c.oid, c.resource.String(), c.actions...)
 	results, err := c.dv.pdpClient.CheckAccess(c.ctx, authReq)
 	if err != nil {
+		c.dv.log.Info(fmt.Sprintf("Error checking access: %s", err.Error()))
 		return false, err
 	}
 
@@ -437,6 +441,8 @@ func (c closure) usingCheckAccessV2() (bool, error) {
 			return false, nil
 		}
 	}
+
+	c.dv.log.Info(fmt.Sprintf("%s has access", *c.oid))
 
 	return true, nil
 }
