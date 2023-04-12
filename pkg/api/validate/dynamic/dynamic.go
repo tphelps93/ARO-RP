@@ -403,7 +403,7 @@ func (c closure) usingListPermissions() (bool, error) {
 // usingCheckAccessV2 uses the new RBAC checkAccessV2 API
 func (c closure) usingCheckAccessV2() (bool, error) {
 	// TODO remove this when fully migrated to CheckAccess
-	c.dv.log.Debug("retry validateActions with CheckAccessV2")
+	c.dv.log.Info("retry validateActions with CheckAccessV2")
 
 	// reusing oid during retries
 	if c.oid == nil {
