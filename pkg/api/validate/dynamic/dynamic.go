@@ -61,6 +61,7 @@ type dynamic struct {
 	checkAccessSubjectInfoCred azcore.TokenCredential
 	env                        env.Interface
 	azEnv                      *azureclient.AROEnvironment
+	byoNSG                     bool
 
 	permissions        authorization.PermissionsClient
 	virtualNetworks    virtualNetworksGetClient
@@ -87,6 +88,7 @@ func NewValidator(
 	authorizerType AuthorizerType,
 	cred azcore.TokenCredential,
 	pdpClient remotepdp.RemotePDPClient,
+	byoNSG bool,
 ) (Dynamic, error) {
 	return &dynamic{
 		log:                        log,
@@ -94,6 +96,7 @@ func NewValidator(
 		env:                        env,
 		azEnv:                      azEnv,
 		checkAccessSubjectInfoCred: cred,
+		byoNSG:                     byoNSG,
 
 		spComputeUsage: compute.NewUsageClient(azEnv, subscriptionID, authorizer),
 		spNetworkUsage: network.NewUsageClient(azEnv, subscriptionID, authorizer),
@@ -554,8 +557,12 @@ func (dv *dynamic) validateVnetLocation(ctx context.Context, vnetr azure.Resourc
 	return nil
 }
 
+var (
+	errMsgNSGAttached    = "The provided subnet '%s' is invalid: must not have a network security group attached."
+	errMsgNSGNotAttached = "The provided subnet '%s' is invalid: must have network security group '%s' attached."
+)
+
 func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster, subnets []Subnet) error {
-	dv.log.Printf("validateSubnet")
 	if len(subnets) == 0 {
 		return fmt.Errorf("no subnets found")
 	}
@@ -590,34 +597,26 @@ func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster
 			)
 		}
 
-		if oc.Properties.ProvisioningState == api.ProvisioningStateCreating {
-			if ss.SubnetPropertiesFormat != nil &&
-				ss.SubnetPropertiesFormat.NetworkSecurityGroup != nil {
-				expectedNsgID, err := subnet.NetworkSecurityGroupID(oc, s.ID)
+		switch oc.Properties.ProvisioningState {
+		case api.ProvisioningStateCreating:
+			if nsgExists(ss.SubnetPropertiesFormat) && !dv.byoNSG {
+				expectedNsgID, err := getRecordedNsgID(oc, s.ID)
 				if err != nil {
 					return err
 				}
-
-				if !strings.EqualFold(*ss.SubnetPropertiesFormat.NetworkSecurityGroup.ID, expectedNsgID) {
-					return api.NewCloudError(
-						http.StatusBadRequest,
-						api.CloudErrorCodeInvalidLinkedVNet,
-						s.Path,
-						"The provided subnet '%s' is invalid: must not have a network security group attached.",
-						s.ID,
-					)
+				if !isTheSameNSG(*ss.SubnetPropertiesFormat.NetworkSecurityGroup.ID, expectedNsgID) {
+					return newSubnetValidationError(s.Path, errMsgNSGAttached, s.ID)
 				}
 			}
-		} else {
-			nsgID, err := subnet.NetworkSecurityGroupID(oc, *ss.ID)
+		default:
+			nsgID, err := getRecordedNsgID(oc, *ss.ID)
 			if err != nil {
 				return err
 			}
 
-			if ss.SubnetPropertiesFormat == nil ||
-				ss.SubnetPropertiesFormat.NetworkSecurityGroup == nil ||
-				!strings.EqualFold(*ss.SubnetPropertiesFormat.NetworkSecurityGroup.ID, nsgID) {
-				return api.NewCloudError(http.StatusBadRequest, api.CloudErrorCodeInvalidLinkedVNet, s.Path, "The provided subnet '%s' is invalid: must have network security group '%s' attached.", s.ID, nsgID)
+			if !nsgExists(ss.SubnetPropertiesFormat) ||
+				!isTheSameNSG(*ss.SubnetPropertiesFormat.NetworkSecurityGroup.ID, nsgID) {
+				return newSubnetValidationError(s.Path, errMsgNSGNotAttached, s.ID, nsgID)
 			}
 		}
 
@@ -650,6 +649,22 @@ func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster
 	}
 
 	return nil
+}
+
+func getRecordedNsgID(oc *api.OpenShiftCluster, subnetID string) (string, error) {
+	return subnet.NetworkSecurityGroupID(oc, subnetID)
+}
+
+func isTheSameNSG(found, inDB string) bool {
+	return strings.EqualFold(found, inDB)
+}
+
+func nsgExists(subnetProp *mgmtnetwork.SubnetPropertiesFormat) bool {
+	return subnetProp != nil && subnetProp.NetworkSecurityGroup != nil
+}
+
+func newSubnetValidationError(path, message string, refs ...interface{}) error {
+	return api.NewCloudError(http.StatusBadRequest, api.CloudErrorCodeInvalidLinkedVNet, path, message, refs...)
 }
 
 func getRouteTableID(vnet *mgmtnetwork.VirtualNetwork, subnetID string) (string, error) {

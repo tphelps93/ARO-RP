@@ -46,6 +46,7 @@ func (m *manager) adminUpdate() []steps.Step {
 		steps.Action(m.initializeKubernetesClients), // must be first
 		steps.Action(m.ensureBillingRecord),         // belt and braces
 		steps.Action(m.ensureDefaults),
+		steps.Action(m.ensureBYONsg),
 		steps.Action(m.fixupClusterSPObjectID),
 		steps.Action(m.fixInfraID), // Old clusters lacks infraID in the database. Which makes code prone to errors.
 	}
@@ -58,7 +59,7 @@ func (m *manager) adminUpdate() []steps.Step {
 			steps.Action(m.populateRegistryStorageAccountName), // must go before migrateStorageAccounts
 			steps.Action(m.migrateStorageAccounts),
 			steps.Action(m.fixSSH),
-			//steps.Action(m.removePrivateDNSZone), // TODO(mj): re-enable once we communicate this out
+			// steps.Action(m.removePrivateDNSZone), // TODO(mj): re-enable once we communicate this out
 		)
 	}
 
@@ -230,6 +231,7 @@ func setFieldCreatedByHive(createdByHive bool) database.OpenShiftClusterDocument
 func (m *manager) bootstrap() []steps.Step {
 	s := []steps.Step{
 		steps.Action(m.validateResources),
+		steps.Action(m.ensureBYONsg),
 		steps.Action(m.ensureACRToken),
 		steps.Action(m.ensureInfraID),
 		steps.Action(m.ensureSSHKey),

@@ -164,6 +164,7 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 		)
 	}
 
+	byoNSG := feature.IsRegisteredForFeature(dv.subscriptionDoc.Subscription.Properties, api.FeatureFlagBYONsg)
 	// FP validation
 	fpDynamic, err := dynamic.NewValidator(
 		dv.log,
@@ -174,7 +175,9 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 		dynamic.AuthorizerFirstParty,
 		fpClientCred,
 		pdpClient,
+		byoNSG,
 	)
+	// FP validation
 	if err != nil {
 		return err
 	}
@@ -219,6 +222,7 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 		dynamic.AuthorizerClusterServicePrincipal,
 		spClientCred,
 		pdpClient,
+		byoNSG,
 	)
 	if err != nil {
 		return err

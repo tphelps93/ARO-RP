@@ -37,6 +37,7 @@ import (
 	"github.com/Azure/ARO-RP/pkg/util/billing"
 	"github.com/Azure/ARO-RP/pkg/util/dns"
 	"github.com/Azure/ARO-RP/pkg/util/encryption"
+	"github.com/Azure/ARO-RP/pkg/util/feature"
 	"github.com/Azure/ARO-RP/pkg/util/storage"
 	"github.com/Azure/ARO-RP/pkg/util/subnet"
 )
@@ -100,6 +101,7 @@ type manager struct {
 
 	installViaHive     bool
 	adoptViaHive       bool
+	byoNSG             bool
 	hiveClusterManager hive.ClusterManager
 
 	aroOperatorDeployer deploy.Operator
@@ -111,7 +113,8 @@ type manager struct {
 
 // New returns a cluster manager
 func New(ctx context.Context, log *logrus.Entry, _env env.Interface, db database.OpenShiftClusters, dbGateway database.Gateway, dbOpenShiftVersions database.OpenShiftVersions, aead encryption.AEAD,
-	billing billing.Manager, doc *api.OpenShiftClusterDocument, subscriptionDoc *api.SubscriptionDocument, hiveClusterManager hive.ClusterManager, metricsEmitter metrics.Emitter) (Interface, error) {
+	billing billing.Manager, doc *api.OpenShiftClusterDocument, subscriptionDoc *api.SubscriptionDocument, hiveClusterManager hive.ClusterManager, metricsEmitter metrics.Emitter,
+) (Interface, error) {
 	r, err := azure.ParseResourceID(doc.OpenShiftCluster.ID)
 	if err != nil {
 		return nil, err
@@ -184,5 +187,6 @@ func New(ctx context.Context, log *logrus.Entry, _env env.Interface, db database
 		hiveClusterManager:                hiveClusterManager,
 		now:                               func() time.Time { return time.Now() },
 		openShiftClusterDocumentVersioner: new(openShiftClusterDocumentVersionerService),
+		byoNSG:                            feature.IsRegisteredForFeature(subscriptionDoc.Subscription.Properties, api.FeatureFlagBYONsg),
 	}, nil
 }
