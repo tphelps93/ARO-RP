@@ -37,7 +37,7 @@ func NewOpenShiftClusterDynamicValidator(
 	oc *api.OpenShiftCluster,
 	subscriptionDoc *api.SubscriptionDocument,
 	fpAuthorizer autorest.Authorizer,
-) OpenShiftClusterDynamicValidator {
+) *openShiftClusterDynamicValidator {
 	return &openShiftClusterDynamicValidator{
 		log: log,
 		env: env,
@@ -45,6 +45,7 @@ func NewOpenShiftClusterDynamicValidator(
 		oc:              oc,
 		subscriptionDoc: subscriptionDoc,
 		fpAuthorizer:    fpAuthorizer,
+		byoNSG:          feature.IsRegisteredForFeature(subscriptionDoc.Subscription.Properties, api.FeatureFlagBYONsg),
 	}
 }
 
@@ -55,6 +56,7 @@ type openShiftClusterDynamicValidator struct {
 	oc              *api.OpenShiftCluster
 	subscriptionDoc *api.SubscriptionDocument
 	fpAuthorizer    autorest.Authorizer
+	byoNSG          bool
 }
 
 func ensureAccessTokenClaims(ctx context.Context, tokenCredential *azidentity.ClientSecretCredential, scopes []string) error {
@@ -164,7 +166,6 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 		)
 	}
 
-	byoNSG := feature.IsRegisteredForFeature(dv.subscriptionDoc.Subscription.Properties, api.FeatureFlagBYONsg)
 	// FP validation
 	fpDynamic, err := dynamic.NewValidator(
 		dv.log,
@@ -175,7 +176,7 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 		dynamic.AuthorizerFirstParty,
 		fpClientCred,
 		pdpClient,
-		byoNSG,
+		dv.byoNSG,
 	)
 	// FP validation
 	if err != nil {
@@ -222,7 +223,7 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 		dynamic.AuthorizerClusterServicePrincipal,
 		spClientCred,
 		pdpClient,
-		byoNSG,
+		dv.byoNSG,
 	)
 	if err != nil {
 		return err
@@ -250,6 +251,8 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 		return err
 	}
 
+	dv.byoNSG = spDynamic.IsBYONsg()
+
 	err = spDynamic.ValidateDiskEncryptionSets(ctx, dv.oc)
 	if err != nil {
 		return err
@@ -261,4 +264,8 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (dv *openShiftClusterDynamicValidator) IsBYONsg() bool {
+	return dv.byoNSG
 }

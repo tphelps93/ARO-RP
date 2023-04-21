@@ -32,6 +32,12 @@ import (
 	"github.com/Azure/ARO-RP/pkg/util/token"
 )
 
+var (
+	errMsgNSGAttached            = "The provided subnet '%s' is invalid: must not have a network security group attached."
+	errMsgNSGNotAttached         = "The provided subnet '%s' is invalid: must have network security group '%s' attached."
+	errMsgNSGNotProperlyAttached = "BYO NSG mode requires that all subnets are attached with an NSG."
+)
+
 type Subnet struct {
 	// ID is a resource id of the subnet
 	ID string
@@ -89,7 +95,7 @@ func NewValidator(
 	cred azcore.TokenCredential,
 	pdpClient remotepdp.RemotePDPClient,
 	byoNSG bool,
-) (Dynamic, error) {
+) (*dynamic, error) {
 	return &dynamic{
 		log:                        log,
 		authorizerType:             authorizerType,
@@ -557,13 +563,10 @@ func (dv *dynamic) validateVnetLocation(ctx context.Context, vnetr azure.Resourc
 	return nil
 }
 
-var (
-	errMsgNSGAttached            = "The provided subnet '%s' is invalid: must not have a network security group attached."
-	errMsgNSGNotAttached         = "The provided subnet '%s' is invalid: must have network security group '%s' attached."
-	errMsgNSGNotProperlyAttached = "BYO NSG mode requires that all subnets are attached with an NSG."
-)
-
 func (dv *dynamic) createSubnetMapByID(ctx context.Context, subnets []Subnet) (map[string]*mgmtnetwork.Subnet, error) {
+	if len(subnets) == 0 {
+		return nil, fmt.Errorf("no subnets found")
+	}
 	subnetByID := make(map[string]*mgmtnetwork.Subnet)
 
 	for _, s := range subnets {
@@ -600,13 +603,13 @@ func (dv *dynamic) createSubnetMapByID(ctx context.Context, subnets []Subnet) (m
 	return subnetByID, nil
 }
 
-// reEvaluateBYONsg checks whether all the subnets can either have or don't have NSG attached.
+// checkByoNSG checks whether all the subnets have or don't have NSG attached.
 // when the BYONsg feature flag is on and only some of the subnets are attached with an NSG,
 // it returns an error.  If none of the subnets is attached, it's no longer BYO NSG and the
 // cluster installation process should fall back to using the managed nsg.
-func (dv *dynamic) reEvaluateBYONsg(ctx context.Context, subnetByID map[string]*mgmtnetwork.Subnet) error {
+func (dv *dynamic) checkByoNSG(ctx context.Context, subnetByID map[string]*mgmtnetwork.Subnet) (bool, error) {
 	if !dv.byoNSG {
-		return nil // not applicable if the flag is not set
+		return dv.byoNSG, nil // not applicable if the flag is not set
 	}
 
 	noNSGAttached := 0
@@ -619,28 +622,25 @@ func (dv *dynamic) reEvaluateBYONsg(ctx context.Context, subnetByID map[string]*
 		}
 	}
 	if attached == allSubnetsAreAttached {
-		return nil // correct setup by customer
+		dv.log.Info("all subnets are attached, BYO NSG")
+		return true, nil // correct setup by customer
 	}
 	if attached == noNSGAttached {
-		dv.byoNSG = false // fall back to managed cluster NSG
-
-		return nil
+		dv.log.Info("no subnets are attached, no longer BYO NSG")
+		return false, nil
 	}
 
-	return fmt.Errorf(errMsgNSGNotProperlyAttached)
+	dv.log.Info("BYO NSG: not all subnets are attached")
+	return dv.byoNSG, fmt.Errorf(errMsgNSGNotProperlyAttached)
 }
 
 func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster, subnets []Subnet) error {
-	if len(subnets) == 0 {
-		return fmt.Errorf("no subnets found")
-	}
-
 	subnetByID, err := dv.createSubnetMapByID(ctx, subnets)
 	if err != nil {
 		return err
 	}
 
-	err = dv.reEvaluateBYONsg(ctx, subnetByID)
+	dv.byoNSG, err = dv.checkByoNSG(ctx, subnetByID)
 	if err != nil {
 		return err
 	}
@@ -700,6 +700,10 @@ func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster
 	}
 
 	return nil
+}
+
+func (dv *dynamic) IsBYONsg() bool {
+	return dv.byoNSG
 }
 
 func getRecordedNsgID(oc *api.OpenShiftCluster, subnetID string) (string, error) {

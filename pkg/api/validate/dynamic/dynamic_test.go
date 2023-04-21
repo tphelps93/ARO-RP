@@ -1403,7 +1403,7 @@ func TestValidateNatGatewaysPermissionsWithCheckAccess(t *testing.T) {
 	}
 }
 
-func TestReEvaluateBYONsg(t *testing.T) {
+func TestCheckBYONsg(t *testing.T) {
 	ctx := context.Background()
 	subnetWithNSG := &mgmtnetwork.Subnet{
 		SubnetPropertiesFormat: &mgmtnetwork.SubnetPropertiesFormat{
@@ -1455,9 +1455,9 @@ func TestReEvaluateBYONsg(t *testing.T) {
 				// virtualNetworks: vnetClient,
 				byoNSG: true,
 			}
-			err := dv.reEvaluateBYONsg(ctx, tt.subnetByID)
+			byoNSG, err := dv.checkByoNSG(ctx, tt.subnetByID)
 			utilerror.AssertErrorMessage(t, err, tt.wantErr)
-			if dv.byoNSG != tt.byoNSG {
+			if byoNSG != tt.byoNSG {
 				t.Errorf("dv.byoNSG got %t, want %t", dv.byoNSG, tt.byoNSG)
 			}
 		})
