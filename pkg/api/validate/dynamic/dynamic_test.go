@@ -1402,3 +1402,64 @@ func TestValidateNatGatewaysPermissionsWithCheckAccess(t *testing.T) {
 		})
 	}
 }
+
+func TestReEvaluateBYONsg(t *testing.T) {
+	ctx := context.Background()
+	subnetWithNSG := &mgmtnetwork.Subnet{
+		SubnetPropertiesFormat: &mgmtnetwork.SubnetPropertiesFormat{
+			NetworkSecurityGroup: &mgmtnetwork.SecurityGroup{
+				ID: &masterNSGv1,
+			},
+		},
+	}
+	subnetWithoutNSG := &mgmtnetwork.Subnet{
+		SubnetPropertiesFormat: &mgmtnetwork.SubnetPropertiesFormat{},
+	}
+
+	for _, tt := range []struct {
+		name       string
+		subnetByID map[string]*mgmtnetwork.Subnet
+		byoNSG     bool
+		wantErr    string
+	}{
+		{
+			name: "pass: all subnets are attached (BYONSG)",
+			subnetByID: map[string]*mgmtnetwork.Subnet{
+				"A": subnetWithNSG,
+				"B": subnetWithNSG,
+			},
+			byoNSG: true,
+		},
+		{
+			name: "pass: no subnets are attached (no longer BYONSG)",
+			subnetByID: map[string]*mgmtnetwork.Subnet{
+				"A": subnetWithoutNSG,
+				"B": subnetWithoutNSG,
+			},
+			byoNSG: false,
+		},
+		{
+			name: "fail: parts of the subnets are attached",
+			subnetByID: map[string]*mgmtnetwork.Subnet{
+				"A": subnetWithNSG,
+				"B": subnetWithoutNSG,
+				"C": subnetWithNSG,
+			},
+			byoNSG:  true,
+			wantErr: "BYO NSG mode requires that all subnets are attached with an NSG.",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dv := &dynamic{
+				log: logrus.NewEntry(logrus.StandardLogger()),
+				// virtualNetworks: vnetClient,
+				byoNSG: true,
+			}
+			err := dv.reEvaluateBYONsg(ctx, tt.subnetByID)
+			utilerror.AssertErrorMessage(t, err, tt.wantErr)
+			if dv.byoNSG != tt.byoNSG {
+				t.Errorf("dv.byoNSG got %t, want %t", dv.byoNSG, tt.byoNSG)
+			}
+		})
+	}
+}
