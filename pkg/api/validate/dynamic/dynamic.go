@@ -621,17 +621,16 @@ func (dv *dynamic) checkByoNSG(ctx context.Context, subnetByID map[string]*mgmtn
 			attached++
 		}
 	}
+	if attached > noNSGAttached && attached < allSubnetsAreAttached {
+		dv.log.Info("BYO NSG: not all subnets are attached")
+		return dv.byoNSG, fmt.Errorf(errMsgNSGNotProperlyAttached)
+	}
 	if attached == allSubnetsAreAttached {
 		dv.log.Info("all subnets are attached, BYO NSG")
 		return true, nil // correct setup by customer
 	}
-	if attached == noNSGAttached {
-		dv.log.Info("no subnets are attached, no longer BYO NSG")
-		return false, nil
-	}
-
-	dv.log.Info("BYO NSG: not all subnets are attached")
-	return dv.byoNSG, fmt.Errorf(errMsgNSGNotProperlyAttached)
+	dv.log.Info("no subnets are attached, no longer BYO NSG")
+	return false, nil
 }
 
 func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster, subnets []Subnet) error {
