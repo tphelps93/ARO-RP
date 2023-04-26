@@ -16,7 +16,7 @@ import (
 	"github.com/Azure/ARO-RP/pkg/api"
 )
 
-func (dv *dynamic) ValidateDiskEncryptionSets(ctx context.Context, oc *api.OpenShiftCluster) error {
+func (dv *Dynamic) ValidateDiskEncryptionSets(ctx context.Context, oc *api.OpenShiftCluster) error {
 	dv.log.Print("ValidateDiskEncryptionSet")
 
 	// It is very likely that master and worker profiles use the same
@@ -64,7 +64,7 @@ func (dv *dynamic) ValidateDiskEncryptionSets(ctx context.Context, oc *api.OpenS
 	return nil
 }
 
-func (dv *dynamic) validateDiskEncryptionSetPermissions(ctx context.Context, desr *azure.Resource, path string) error {
+func (dv *Dynamic) validateDiskEncryptionSetPermissions(ctx context.Context, desr *azure.Resource, path string) error {
 	dv.log.Print("validateDiskEncryptionSetPermissions")
 
 	errCode := api.CloudErrorCodeInvalidResourceProviderPermissions
@@ -87,7 +87,7 @@ func (dv *dynamic) validateDiskEncryptionSetPermissions(ctx context.Context, des
 	return err
 }
 
-func (dv *dynamic) validateDiskEncryptionSetLocation(ctx context.Context, desr *azure.Resource, location, path string) error {
+func (dv *Dynamic) validateDiskEncryptionSetLocation(ctx context.Context, desr *azure.Resource, location, path string) error {
 	dv.log.Print("validateDiskEncryptionSetLocation")
 
 	des, err := dv.diskEncryptionSets.Get(ctx, desr.ResourceGroup, desr.ResourceName)

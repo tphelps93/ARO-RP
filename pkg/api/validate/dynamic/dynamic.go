@@ -51,16 +51,7 @@ type ServicePrincipalValidator interface {
 }
 
 // Dynamic validate in the operator context.
-type Dynamic interface {
-	ServicePrincipalValidator
-
-	ValidateVnet(ctx context.Context, location string, subnets []Subnet, additionalCIDRs ...string) error
-	ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster, subnets []Subnet) error
-	ValidateDiskEncryptionSets(ctx context.Context, oc *api.OpenShiftCluster) error
-	ValidateEncryptionAtHost(ctx context.Context, oc *api.OpenShiftCluster) error
-}
-
-type dynamic struct {
+type Dynamic struct {
 	log            *logrus.Entry
 	authorizerType AuthorizerType
 	// This represents the Subject for CheckAccess.  Could be either FP or SP.
@@ -95,8 +86,8 @@ func NewValidator(
 	cred azcore.TokenCredential,
 	pdpClient remotepdp.RemotePDPClient,
 	byoNSG bool,
-) (*dynamic, error) {
-	return &dynamic{
+) (*Dynamic, error) {
+	return &Dynamic{
 		log:                        log,
 		authorizerType:             authorizerType,
 		env:                        env,
@@ -121,14 +112,14 @@ func NewServicePrincipalValidator(
 	azEnv *azureclient.AROEnvironment,
 	authorizerType AuthorizerType,
 ) (ServicePrincipalValidator, error) {
-	return &dynamic{
+	return &Dynamic{
 		log:            log,
 		authorizerType: authorizerType,
 		azEnv:          azEnv,
 	}, nil
 }
 
-func (dv *dynamic) ValidateVnet(
+func (dv *Dynamic) ValidateVnet(
 	ctx context.Context,
 	location string,
 	subnets []Subnet,
@@ -189,7 +180,7 @@ func (dv *dynamic) ValidateVnet(
 	return dv.validateCIDRRanges(ctx, subnets, additionalCIDRs...)
 }
 
-func (dv *dynamic) validateVnetPermissions(ctx context.Context, vnet azure.Resource) error {
+func (dv *Dynamic) validateVnetPermissions(ctx context.Context, vnet azure.Resource) error {
 	dv.log.Printf("validateVnetPermissions")
 
 	errCode := api.CloudErrorCodeInvalidResourceProviderPermissions
@@ -230,7 +221,7 @@ func (dv *dynamic) validateVnetPermissions(ctx context.Context, vnet azure.Resou
 }
 
 // validateRouteTablesPermissions will validate permissions on provided subnet
-func (dv *dynamic) validateRouteTablePermissions(ctx context.Context, s Subnet) error {
+func (dv *Dynamic) validateRouteTablePermissions(ctx context.Context, s Subnet) error {
 	dv.log.Printf("validateRouteTablePermissions")
 
 	vnetID, _, err := subnet.Split(s.ID)
@@ -292,7 +283,7 @@ func (dv *dynamic) validateRouteTablePermissions(ctx context.Context, s Subnet) 
 }
 
 // validateNatGatewayPermissions will validate permissions on provided subnet
-func (dv *dynamic) validateNatGatewayPermissions(ctx context.Context, s Subnet) error {
+func (dv *Dynamic) validateNatGatewayPermissions(ctx context.Context, s Subnet) error {
 	dv.log.Printf("validateNatGatewayPermissions")
 
 	vnetID, _, err := subnet.Split(s.ID)
@@ -357,7 +348,7 @@ func (dv *dynamic) validateNatGatewayPermissions(ctx context.Context, s Subnet) 
 	return err
 }
 
-func (dv *dynamic) validateActions(ctx context.Context, r *azure.Resource, actions []string) error {
+func (dv *Dynamic) validateActions(ctx context.Context, r *azure.Resource, actions []string) error {
 	c := closure{dv: dv, ctx: ctx, resource: r, actions: actions}
 	conditionalFunc := c.usingListPermissions
 	timeout := 20 * time.Second
@@ -374,7 +365,7 @@ func (dv *dynamic) validateActions(ctx context.Context, r *azure.Resource, actio
 
 // closure is the closure used in PollImmediateUntil's ConditionalFunc
 type closure struct {
-	dv       *dynamic
+	dv       *Dynamic
 	ctx      context.Context
 	resource *azure.Resource
 	actions  []string
@@ -469,7 +460,7 @@ func createAuthorizationRequest(subject, resourceId string, actions ...string) r
 	}
 }
 
-func (dv *dynamic) validateCIDRRanges(ctx context.Context, subnets []Subnet, additionalCIDRs ...string) error {
+func (dv *Dynamic) validateCIDRRanges(ctx context.Context, subnets []Subnet, additionalCIDRs ...string) error {
 	dv.log.Print("ValidateCIDRRanges")
 
 	// During cluster runtime they get enriched and contains multiple
@@ -541,7 +532,7 @@ func (dv *dynamic) validateCIDRRanges(ctx context.Context, subnets []Subnet, add
 	return nil
 }
 
-func (dv *dynamic) validateVnetLocation(ctx context.Context, vnetr azure.Resource, location string) error {
+func (dv *Dynamic) validateVnetLocation(ctx context.Context, vnetr azure.Resource, location string) error {
 	dv.log.Print("validateVnetLocation")
 
 	vnet, err := dv.virtualNetworks.Get(ctx, vnetr.ResourceGroup, vnetr.ResourceName, "")
@@ -563,7 +554,7 @@ func (dv *dynamic) validateVnetLocation(ctx context.Context, vnetr azure.Resourc
 	return nil
 }
 
-func (dv *dynamic) createSubnetMapByID(ctx context.Context, subnets []Subnet) (map[string]*mgmtnetwork.Subnet, error) {
+func (dv *Dynamic) createSubnetMapByID(ctx context.Context, subnets []Subnet) (map[string]*mgmtnetwork.Subnet, error) {
 	if len(subnets) == 0 {
 		return nil, fmt.Errorf("no subnets found")
 	}
@@ -607,7 +598,7 @@ func (dv *dynamic) createSubnetMapByID(ctx context.Context, subnets []Subnet) (m
 // when the BYONsg feature flag is on and only some of the subnets are attached with an NSG,
 // it returns an error.  If none of the subnets is attached, it's no longer BYO NSG and the
 // cluster installation process should fall back to using the managed nsg.
-func (dv *dynamic) checkByoNSG(ctx context.Context, subnetByID map[string]*mgmtnetwork.Subnet) (bool, error) {
+func (dv *Dynamic) checkByoNSG(subnetByID map[string]*mgmtnetwork.Subnet) (bool, error) {
 	if !dv.byoNSG {
 		return dv.byoNSG, nil // not applicable if the flag is not set
 	}
@@ -623,7 +614,14 @@ func (dv *dynamic) checkByoNSG(ctx context.Context, subnetByID map[string]*mgmtn
 	}
 	if attached > noNSGAttached && attached < allSubnetsAreAttached {
 		dv.log.Info("BYO NSG: not all subnets are attached")
-		return dv.byoNSG, fmt.Errorf(errMsgNSGNotProperlyAttached)
+		return dv.byoNSG,
+			&api.CloudError{
+				StatusCode: http.StatusBadRequest,
+				CloudErrorBody: &api.CloudErrorBody{
+					Code:    api.CloudErrorCodeInvalidLinkedVNet,
+					Message: errMsgNSGNotProperlyAttached,
+				},
+			}
 	}
 	if attached == allSubnetsAreAttached {
 		dv.log.Info("all subnets are attached, BYO NSG")
@@ -633,13 +631,13 @@ func (dv *dynamic) checkByoNSG(ctx context.Context, subnetByID map[string]*mgmtn
 	return false, nil
 }
 
-func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster, subnets []Subnet) error {
+func (dv *Dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster, subnets []Subnet) error {
 	subnetByID, err := dv.createSubnetMapByID(ctx, subnets)
 	if err != nil {
 		return err
 	}
 
-	dv.byoNSG, err = dv.checkByoNSG(ctx, subnetByID)
+	dv.byoNSG, err = dv.checkByoNSG(subnetByID)
 	if err != nil {
 		return err
 	}
@@ -701,7 +699,7 @@ func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster
 	return nil
 }
 
-func (dv *dynamic) IsBYONsg() bool {
+func (dv *Dynamic) IsBYONsg() bool {
 	return dv.byoNSG
 }
 

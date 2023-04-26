@@ -15,7 +15,7 @@ import (
 	"github.com/Azure/ARO-RP/pkg/util/azureclaim"
 )
 
-func (dv *dynamic) ValidateServicePrincipal(ctx context.Context, tokenCredential azcore.TokenCredential) error {
+func (dv *Dynamic) ValidateServicePrincipal(ctx context.Context, tokenCredential azcore.TokenCredential) error {
 	dv.log.Print("ValidateServicePrincipal")
 
 	tokenRequestOptions := policy.TokenRequestOptions{

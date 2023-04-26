@@ -145,7 +145,7 @@ func TestValidateEncryptionAtHost(t *testing.T) {
 				tt.mocks(_env)
 			}
 
-			dv := &dynamic{
+			dv := &Dynamic{
 				env:            _env,
 				authorizerType: AuthorizerClusterServicePrincipal,
 				log:            logrus.NewEntry(logrus.StandardLogger()),

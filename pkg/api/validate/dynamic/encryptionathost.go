@@ -12,7 +12,7 @@ import (
 	"github.com/Azure/ARO-RP/pkg/util/computeskus"
 )
 
-func (dv *dynamic) ValidateEncryptionAtHost(ctx context.Context, oc *api.OpenShiftCluster) error {
+func (dv *Dynamic) ValidateEncryptionAtHost(ctx context.Context, oc *api.OpenShiftCluster) error {
 	dv.log.Print("ValidateEncryptionAtHost")
 
 	if oc.Properties.MasterProfile.EncryptionAtHost == api.EncryptionAtHostEnabled {
@@ -34,7 +34,7 @@ func (dv *dynamic) ValidateEncryptionAtHost(ctx context.Context, oc *api.OpenShi
 	return nil
 }
 
-func (dv *dynamic) validateEncryptionAtHostSupport(VMSize api.VMSize, path string) error {
+func (dv *Dynamic) validateEncryptionAtHostSupport(VMSize api.VMSize, path string) error {
 	sku, err := dv.env.VMSku(string(VMSize))
 	if err != nil {
 		return err

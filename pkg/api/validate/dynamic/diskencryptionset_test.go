@@ -276,7 +276,7 @@ func TestValidateDiskEncryptionSets(t *testing.T) {
 						tt.mocks(permissionsClient, diskEncryptionSetsClient, cancel)
 					}
 
-					dv := &dynamic{
+					dv := &Dynamic{
 						authorizerType:     authorizerType,
 						log:                logrus.NewEntry(logrus.StandardLogger()),
 						permissions:        permissionsClient,

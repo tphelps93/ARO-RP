@@ -125,7 +125,7 @@ func TestValidateVnetPermissions(t *testing.T) {
 			permissionsClient := mock_authorization.NewMockPermissionsClient(controller)
 			tt.mocks(permissionsClient, cancel)
 
-			dv := &dynamic{
+			dv := &Dynamic{
 				authorizerType: AuthorizerClusterServicePrincipal,
 				log:            logrus.NewEntry(logrus.StandardLogger()),
 				permissions:    permissionsClient,
@@ -388,7 +388,7 @@ func TestValidateRouteTablesPermissions(t *testing.T) {
 				},
 			}
 
-			dv := &dynamic{
+			dv := &Dynamic{
 				authorizerType:  AuthorizerClusterServicePrincipal,
 				log:             logrus.NewEntry(logrus.StandardLogger()),
 				permissions:     permissionsClient,
@@ -547,7 +547,7 @@ func TestValidateNatGatewaysPermissions(t *testing.T) {
 				},
 			}
 
-			dv := &dynamic{
+			dv := &Dynamic{
 				authorizerType:  AuthorizerClusterServicePrincipal,
 				log:             logrus.NewEntry(logrus.StandardLogger()),
 				permissions:     permissionsClient,
@@ -698,7 +698,7 @@ func TestValidateCIDRRanges(t *testing.T) {
 					tt.vnetMocks(vnetClient, vnet)
 				}
 
-				dv := &dynamic{
+				dv := &Dynamic{
 					log:             logrus.NewEntry(logrus.StandardLogger()),
 					virtualNetworks: vnetClient,
 				}
@@ -746,7 +746,7 @@ func TestValidateVnetLocation(t *testing.T) {
 				Get(gomock.Any(), resourceGroupName, vnetName, "").
 				Return(vnet, nil)
 
-			dv := &dynamic{
+			dv := &Dynamic{
 				log:             logrus.NewEntry(logrus.StandardLogger()),
 				virtualNetworks: vnetClient,
 			}
@@ -936,7 +936,7 @@ func TestValidateSubnets(t *testing.T) {
 			if tt.vnetMocks != nil {
 				tt.vnetMocks(vnetClient, vnet)
 			}
-			dv := &dynamic{
+			dv := &Dynamic{
 				virtualNetworks: vnetClient,
 				log:             logrus.NewEntry(logrus.StandardLogger()),
 			}
@@ -1055,7 +1055,7 @@ func TestValidateVnetPermissionsWithCheckAccess(t *testing.T) {
 			pdpClient := mock_remotepdp.NewMockRemotePDPClient(controller)
 			tt.mocks(tokenCred, pdpClient, cancel)
 
-			dv := &dynamic{
+			dv := &Dynamic{
 				azEnv:                      &azureclient.PublicCloud,
 				authorizerType:             AuthorizerClusterServicePrincipal,
 				log:                        logrus.NewEntry(logrus.StandardLogger()),
@@ -1215,7 +1215,7 @@ func TestValidateRouteTablesPermissionsWithCheckAccess(t *testing.T) {
 				},
 			}
 
-			dv := &dynamic{
+			dv := &Dynamic{
 				azEnv:                      &azureclient.PublicCloud,
 				authorizerType:             AuthorizerClusterServicePrincipal,
 				log:                        logrus.NewEntry(logrus.StandardLogger()),
@@ -1380,7 +1380,7 @@ func TestValidateNatGatewaysPermissionsWithCheckAccess(t *testing.T) {
 				},
 			}
 
-			dv := &dynamic{
+			dv := &Dynamic{
 				azEnv:                      &azureclient.PublicCloud,
 				authorizerType:             AuthorizerClusterServicePrincipal,
 				log:                        logrus.NewEntry(logrus.StandardLogger()),
@@ -1404,7 +1404,6 @@ func TestValidateNatGatewaysPermissionsWithCheckAccess(t *testing.T) {
 }
 
 func TestCheckBYONsg(t *testing.T) {
-	ctx := context.Background()
 	subnetWithNSG := &mgmtnetwork.Subnet{
 		SubnetPropertiesFormat: &mgmtnetwork.SubnetPropertiesFormat{
 			NetworkSecurityGroup: &mgmtnetwork.SecurityGroup{
@@ -1446,16 +1445,16 @@ func TestCheckBYONsg(t *testing.T) {
 				"C": subnetWithNSG,
 			},
 			byoNSG:  true,
-			wantErr: "BYO NSG mode requires that all subnets are attached with an NSG.",
+			wantErr: "400: InvalidLinkedVNet: : BYO NSG mode requires that all subnets are attached with an NSG.",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			dv := &dynamic{
+			dv := &Dynamic{
 				log: logrus.NewEntry(logrus.StandardLogger()),
 				// virtualNetworks: vnetClient,
 				byoNSG: true,
 			}
-			byoNSG, err := dv.checkByoNSG(ctx, tt.subnetByID)
+			byoNSG, err := dv.checkByoNSG(tt.subnetByID)
 			utilerror.AssertErrorMessage(t, err, tt.wantErr)
 			if byoNSG != tt.byoNSG {
 				t.Errorf("dv.byoNSG got %t, want %t", dv.byoNSG, tt.byoNSG)

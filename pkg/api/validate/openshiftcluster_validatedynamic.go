@@ -26,9 +26,9 @@ import (
 )
 
 // OpenShiftClusterDynamicValidator is the dynamic validator interface
-type OpenShiftClusterDynamicValidator interface {
-	Dynamic(context.Context) error
-}
+//type OpenShiftClusterDynamicValidator interface {
+//	Dynamic(context.Context) error
+//}
 
 // NewOpenShiftClusterDynamicValidator creates a new OpenShiftClusterDynamicValidator
 func NewOpenShiftClusterDynamicValidator(
@@ -37,8 +37,8 @@ func NewOpenShiftClusterDynamicValidator(
 	oc *api.OpenShiftCluster,
 	subscriptionDoc *api.SubscriptionDocument,
 	fpAuthorizer autorest.Authorizer,
-) *openShiftClusterDynamicValidator {
-	return &openShiftClusterDynamicValidator{
+) *OpenShiftClusterDynamicValidator {
+	return &OpenShiftClusterDynamicValidator{
 		log: log,
 		env: env,
 
@@ -49,7 +49,7 @@ func NewOpenShiftClusterDynamicValidator(
 	}
 }
 
-type openShiftClusterDynamicValidator struct {
+type OpenShiftClusterDynamicValidator struct {
 	log *logrus.Entry
 	env env.Interface
 
@@ -118,7 +118,7 @@ func ensureAccessTokenClaims(ctx context.Context, tokenCredential *azidentity.Cl
 }
 
 // Dynamic validates an OpenShift cluster
-func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
+func (dv *OpenShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 	// Get all subnets
 	subnets := []dynamic.Subnet{{
 		ID:   dv.oc.Properties.MasterProfile.SubnetID,
@@ -266,6 +266,6 @@ func (dv *openShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 	return nil
 }
 
-func (dv *openShiftClusterDynamicValidator) IsBYONsg() bool {
+func (dv *OpenShiftClusterDynamicValidator) IsBYONsg() bool {
 	return dv.byoNSG
 }
