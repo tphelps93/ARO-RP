@@ -166,6 +166,10 @@ func (dv *OpenShiftClusterDynamicValidator) Dynamic(ctx context.Context) error {
 		)
 	}
 
+	if dv.byoNSG {
+		dv.log.Info("BYO NSG mode is on")
+	}
+
 	// FP validation
 	fpDynamic, err := dynamic.NewValidator(
 		dv.log,
