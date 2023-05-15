@@ -35,7 +35,8 @@ import (
 
 var (
 	errMsgNSGAttached            = "The provided subnet '%s' is invalid: must not have a network security group attached."
-	errMsgNSGNotAttached         = "The provided subnet '%s' is invalid: must have network security group '%s' attached."
+	errMsgOriginalNSGNotAttached = "The provided subnet '%s' is invalid: must have network security group '%s' attached."
+	errMsgNSGNotAttached         = "The provided subnet '%s' is invalid: must have a network security group attached."
 	errMsgNSGNotProperlyAttached = "When the enable-preconfigured-nsg option is specified, both the master and worker subnets should have network security groups (NSG) attached to them before starting the cluster installation."
 )
 
@@ -631,33 +632,35 @@ func (dv *dynamic) createSubnetMapByID(ctx context.Context, subnets []Subnet) (m
 // when the BYONsg feature flag is on and only some of the subnets are attached with an NSG,
 // it returns an error.  If none of the subnets is attached, it's no longer BYO NSG and the
 // cluster installation process should fall back to using the managed nsg.
-func (dv *dynamic) checkByoNSG(subnetByID map[string]*mgmtnetwork.Subnet) (bool, error) {
-	noNSGAttached := 0
-	allSubnetsAreAttached := len(subnetByID)
-
+func (dv *dynamic) checkByoNSG(subnetByID map[string]*mgmtnetwork.Subnet) (api.PreconfiguredNSG, error) {
 	var attached int
 	for _, subnet := range subnetByID {
-		if subnet.NetworkSecurityGroup != nil && subnet.NetworkSecurityGroup.ID != nil {
+		if subnetHasNSGAttached(subnet) {
 			attached++
 		}
 	}
-	if attached > noNSGAttached && attached < allSubnetsAreAttached {
-		dv.log.Info("BYO NSG: not all subnets are attached")
-		return false,
-			&api.CloudError{
-				StatusCode: http.StatusBadRequest,
-				CloudErrorBody: &api.CloudErrorBody{
-					Code:    api.CloudErrorCodeInvalidLinkedVNet,
-					Message: errMsgNSGNotProperlyAttached,
-				},
-			}
-	}
-	if attached == allSubnetsAreAttached {
+
+	// all subnets have an attached NSG
+	if attached == len(subnetByID) {
 		dv.log.Info("all subnets are attached, BYO NSG")
-		return true, nil // correct setup by customer
+		return api.PreconfiguredNSGEnabled, nil // correct setup by customer
 	}
-	dv.log.Info("no subnets are attached, no longer BYO NSG. Fall back to using cluster NSG.")
-	return false, nil
+
+	// no subnets have attached NSG, fallback
+	if attached == 0 {
+		dv.log.Info("no subnets are attached, no longer BYO NSG. Fall back to using cluster NSG.")
+		return api.PreconfiguredNSGDisabled, nil
+	}
+
+	// some subnets have NSGs attached, error out
+	return api.PreconfiguredNSGDisabled,
+		&api.CloudError{
+			StatusCode: http.StatusBadRequest,
+			CloudErrorBody: &api.CloudErrorBody{
+				Code:    api.CloudErrorCodeInvalidLinkedVNet,
+				Message: errMsgNSGNotProperlyAttached,
+			},
+		}
 }
 
 func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster, subnets []Subnet) error {
@@ -666,19 +669,22 @@ func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster
 		return err
 	}
 
-	if oc.Properties.NetworkProfile.PreconfiguredNSG {
-		oc.Properties.NetworkProfile.PreconfiguredNSG, err = dv.checkByoNSG(subnetByID)
-		if err != nil {
-			return err
+	if oc.Properties.ProvisioningState == api.ProvisioningStateCreating {
+		if oc.Properties.NetworkProfile.PreconfiguredNSG == api.PreconfiguredNSGEnabled {
+			oc.Properties.NetworkProfile.PreconfiguredNSG, err = dv.checkByoNSG(subnetByID)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
+	// we're parsing through the subnets slice, not the map because we'll return consistent error messages on creation
 	for _, s := range subnets {
 		ss := subnetByID[s.ID]
 
 		switch oc.Properties.ProvisioningState {
 		case api.ProvisioningStateCreating:
-			if nsgExists(ss.SubnetPropertiesFormat) && !oc.Properties.NetworkProfile.PreconfiguredNSG {
+			if subnetHasNSGAttached(ss) && oc.Properties.NetworkProfile.PreconfiguredNSG != api.PreconfiguredNSGEnabled {
 				expectedNsgID, err := getRecordedNsgID(oc, s.ID)
 				if err != nil {
 					return err
@@ -693,9 +699,16 @@ func (dv *dynamic) ValidateSubnets(ctx context.Context, oc *api.OpenShiftCluster
 				return err
 			}
 
-			if !nsgExists(ss.SubnetPropertiesFormat) ||
-				!isTheSameNSG(*ss.SubnetPropertiesFormat.NetworkSecurityGroup.ID, nsgID) {
-				return newSubnetValidationError(s.Path, errMsgNSGNotAttached, s.ID, nsgID)
+			switch oc.Properties.NetworkProfile.PreconfiguredNSG {
+			case api.PreconfiguredNSGDisabled:
+				if !subnetHasNSGAttached(ss) ||
+					!isTheSameNSG(*ss.SubnetPropertiesFormat.NetworkSecurityGroup.ID, nsgID) {
+					return newSubnetValidationError(s.Path, errMsgOriginalNSGNotAttached, s.ID, nsgID)
+				}
+			case api.PreconfiguredNSGEnabled:
+				if !subnetHasNSGAttached(ss) {
+					return newSubnetValidationError(s.Path, errMsgNSGNotAttached, s.ID)
+				}
 			}
 		}
 
@@ -738,8 +751,8 @@ func isTheSameNSG(found, inDB string) bool {
 	return strings.EqualFold(found, inDB)
 }
 
-func nsgExists(subnetProp *mgmtnetwork.SubnetPropertiesFormat) bool {
-	return subnetProp != nil && subnetProp.NetworkSecurityGroup != nil
+func subnetHasNSGAttached(subnet *mgmtnetwork.Subnet) bool {
+	return subnet.NetworkSecurityGroup != nil && subnet.NetworkSecurityGroup.ID != nil
 }
 
 func newSubnetValidationError(path, message string, refs ...interface{}) error {
